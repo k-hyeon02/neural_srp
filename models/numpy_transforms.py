@@ -164,14 +164,22 @@ class WindowTargets:
         for i in np.flatnonzero(
             np.abs(np.diff(DOAw[..., 1], axis=1)).max(axis=1) > np.pi
         ):
-            # DOAw[..., 1]: azimuth 채널, shape (n_frames, K)
-            # np.diff(..., axis=1): 프레임 내 인접 샘플 간 차이, shape (n_frames, K-1)
-            # .max(axis=1): 프레임별 최대 불연속 크기, shape (n_frames,)
-            # np.flatnonzero(... > pi): 윈도우 내 방위각 불연속이 π를 초과하는 프레임 인덱스
+            # DOAw[..., 1]: 마지막 축의 인덱스 1 = azimuth만 꺼냄, shape (n_frames, K)
+            # np.diff(..., axis=1): 시간 축(axis=1) 방향으로 인접 샘플 간 차이 계산, shape (n_frames, K-1)
+            # np.abs(...): 차이의 절댓값 → 방향 상관없이 크기만 봄
+            # .max(axis=1): 각 프레임 내에서 가장 큰 차이값 하나만 추출, shape (n_frames,)
+            # > np.pi ≈ 3.14: 차이가 π를 넘으면 경계 점프로 판단
+            # np.flatnonzero(...): True인 인덱스만 꺼냄
+
             # Avoid jumping from -pi to pi in a window
             DOAw[i, DOAw[i, :, 1] < 0, 1] += 2 * np.pi
+            # DOAw[i, :, 1] — i번 프레임의 azimuth 전체
+            # DOAw[i, :, 1] < 0 — 음수인 위치를 True로
+            # DOAw[i, <조건>, 1] — True인 위치의 값만 선택
+            # += 2 * np.pi — 선택된 값에 2π 더하기
             # 해당 프레임 내 음수 방위각에 2π를 더해 [-π,π] 불연속을 [0,2π]로 통일
             # 단방향(음→양)만 처리하므로 반대 방향 불연속은 보정되지 않음 (np.unwrap 사용이 더 robust)
+            
         DOAw = np.mean(DOAw, axis=1)
         # 각 윈도우 내 DOA를 시간 평균: (n_frames, K, N_dims) → (n_frames, N_dims)
         DOAw[DOAw[:, 1] > np.pi, 1] -= 2 * np.pi
@@ -220,7 +228,9 @@ def to_frames(x, frame_size, hop_size):
     # Truncate the signal to fit an integer number of frames
     x = x[:n_signal]  # trailing 샘플 제거하여 프레임 수에 맞게 truncate
 
-    out_shape = (n_frames, frame_size) + x_shape[1:]  # 출력 shape: (n_frames, frame_size, ...) 예: (n_frames, K, N_dims)
+    out_shape = (n_frames, frame_size) + x_shape[1:]  
+    # 출력 shape: (n_frames, frame_size, x_shape의 0번째 제외한 나머지 차원...) 
+    # 예: (n_frames, K, N_dims)
     x_frames = np.zeros(out_shape, dtype=x.dtype)     # 출력 배열 0으로 초기화 (dtype 보존)
 
     for i in range(n_frames):
